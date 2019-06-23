@@ -1,0 +1,11 @@
+asyncioのビルドに失敗するので、実際に置かれている場所から自分で持ってくること（Mac）
+なお、ライブラリのパスはvscode上に表示されるので、そこから追うのが楽.
+/usr/local/var/pyenv/versions/3.6.8/lib/python3.6/asyncio
+
+そのほか、このツールはビルド後に以下のファイルをビルドしたUnix実行ファイルと同じ階層に配置する必要がある。
+ * Google Chrome.app
+ * mozbar.crx
+ * lib/chromedriver_binary
+
+ また、連携するURLはss_url.txtの一行目記載の文字列から取得する。
+ そのため、ビルド後にss_url.txtをUNIX実行ファイルと同じ階層に配置すること。
