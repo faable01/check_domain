@@ -45,6 +45,8 @@ import urllib.request
 from PIL import Image
 import os
 import sys
+from mozscape import Mozscape
+
 
 def check_current():
     """
@@ -81,6 +83,16 @@ def get_ssurl():
 
 
 __ssurl__ = get_ssurl()
+
+
+def get_keys_for_moz_api():
+    """
+        Moz APIのためのキーをタプルで取得する
+    """
+    with open(f"{__current__}/moz_api.txt") as f:
+        id = f.readline().rstrip('\r\n')
+        key = f.readline().rstrip('\r\n')
+        return id, key
 
 
 def open_png(img_read):
@@ -328,6 +340,12 @@ class MozScraper:
         調査対象：PA, DA, MozRank, 目視確認用
     """
     def __init__(self, id, password, *, posi_y=0, headless=False):
+        self.api_id, self.api_key = get_keys_for_moz_api()
+        if self.api_id and self.api_key:
+            """
+                Moz APIで調査する場合は初期処理ここまで
+            """
+            return
         self.id = id
         self.password = password
         self._options = Options()
@@ -376,6 +394,12 @@ class MozScraper:
         send and target.send_keys(send)
         return target
     def login(self):
+        if self.api_id and self.api_key:
+            """
+                Moz APIで調査する場合はログイン不要
+            """
+            return
+        
         url = "https://moz.com/login"
         
         self.driver.get(url)
@@ -399,8 +423,35 @@ class MozScraper:
         url = f"https://{domain}"
         link_on_sheet = urllib.parse.quote(f'=HYPERLINK("https://analytics.moz.com/pro/link-explorer/overview?site={domain}&target=domain","Moz")')
         mozRank = "-" #現在取得不可のため未実装
-        if not non_mozbar and not self.__isHeadless__ and self._is_ok(url):
-            log("MozBarで調査を行います.", color="yellow")
+        if self.api_id and self.api_key:
+            """
+                Moz APIでの調査を行う.
+                PA: upa
+                DA: pda
+            """
+            log("MozAPIで調査を行います.", color="yellow")
+            moz_id = self.api_id
+            moz_key = self.api_key
+            client = Mozscape(moz_id, moz_key)
+            mozMetrics = client.urlMetrics(domain)
+            PA = mozMetrics.get("upa")
+            DA = mozMetrics.get("pda")
+            if PA:
+                PA = f"{PA}"
+            else:
+                PA = "-"
+            if DA:
+                DA = f"{DA}"
+            else:
+                DA = "-"
+            after = time.time()
+            log(f"mozスクレイピング終了（{domain}）", color="yellow")
+            log(f"所要時間：{'{:.3}'.format(after-before)}秒", color="yellow")
+            log("---- 取得結果 ----", color="yellow")
+            log(f"DA: {DA}, PA: {PA}", color="yellow")
+            return [PA, DA, mozRank, link_on_sheet]
+        elif not non_mozbar and not self.__isHeadless__ and self._is_ok(url):
+            log("moz_api.txtを読み取れませんでした。MozBarで調査を行います.", color="yellow")
             self.driver.execute_script("window.open()") #make new tab
             self.driver.switch_to.window(self.driver.window_handles[1]) #switch new tab
             self.driver.get(url)
@@ -417,7 +468,7 @@ class MozScraper:
             log(f"DA: {DA}, PA: {PA}", color="yellow")
             self.driver.close()
             self.driver.switch_to.window(self.driver.window_handles[0]) #switch original tab
-            return [DA, PA, mozRank, link_on_sheet]
+            return [PA, DA, mozRank, link_on_sheet]
         else:
             log("linkExplorerで調査を行います.", color="yellow")
             search_input = self._waitAndGo(".search-input", 0)
@@ -432,10 +483,16 @@ class MozScraper:
             log(f"所要時間：{'{:.3}'.format(after-before)}秒", color="yellow")
             log("---- 取得結果 ----", color="yellow")
             log(f"DA: {DA}, PA: {PA}", color="yellow")
-            return [DA, PA, mozRank, link_on_sheet]
+            return [PA, DA, mozRank, link_on_sheet]
 
 
     def close(self):
+        if self.api_id and self.api_key:
+            """
+                Moz APIで調査する場合はクローズ不要
+            """
+            return
+        
         self.driver.get("https://moz.com/logout")
         self.driver.close()
         log("Moz用Chromeをクローズしました.")
