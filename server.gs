@@ -1,3 +1,12 @@
+/**
+ * 以下の２機能をもったサーバとしてGASを機能させる。
+ * 1. ユーザ情報、調査対象ドメインの読み取り
+ * 2. 調査結果の書き込み
+ * 
+ * 本ツールのメイン機能である「ドメインの調査」はPython側で行う.
+ * GAS側では、Python側の調査結果をもとにスプレッドシートに書き込みを行う
+ */
+
 var ss = SpreadsheetApp.getActiveSpreadsheet()
 var main = ss.getSheetByName("main")
 var idpass = ss.getSheetByName("ID_PASS")
@@ -28,7 +37,7 @@ function doGet(e) {
 
 /**
  * 返却値の形式：
- * {"ah_id":"affiliate@webkara.co.jp","ah_pass":"3FeFnh4QP9Pz2mM","mz_id":"faable.com@gmail.com","mz_pass":"329hyogel","mj_id":"dodonpaxp@gmail.com","mj_pass":"E5$mf%lfmn38b","domain":{"row5":"ik-ham.net","row6":"jaon.net"}}
+ * {"ah_id":"aaaa@aaa.co.jp","ah_pass":"bbbbbb","mz_id":"cccc@gmail.com","mz_pass":"dddddd","mj_id":"eeee@gmail.com","mj_pass":"fffff","domain":{"row5":"foo.com","row6":"hooo.net"}}
  */
 function read() {
 
