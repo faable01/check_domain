@@ -1,5 +1,5 @@
-accessId
-secret key
+mozscape-402c584a09
+cb595c4557e7007465d5a7eb20d7900f
 
 # 1行目に Moz APIのaccessIDを、2行目に Moz APIのSecret Keyを記述してください
 # 以降はPythonの側からアクセスしないのでメモ等に使用可能です

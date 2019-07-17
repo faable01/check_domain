@@ -1,0 +1,3 @@
+https://script.google.com/macros/s/gid/exec
+
+// 2行目以降はプログラムからアクセスしないので、メモ等自由に行えます
