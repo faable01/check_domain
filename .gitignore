@@ -1,4 +1,7 @@
 build/
 Google Chrome.app/
-for_windows/
+for_windows/build/
+for_windows/chromedriver_binary
+for_windows/Google/
+for_windows/idna/
 SEOmozAPISamples/
