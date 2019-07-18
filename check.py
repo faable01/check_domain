@@ -59,15 +59,29 @@ def check_current():
         # frozen
         dir_ = os.path.dirname(sys.executable)
         print("frozen")
+
     else:
         # unfrozen
         dir_ = os.path.dirname(os.path.realpath(__file__))
         print("unfrozen")
+
     print(f"current directory: {dir_}")
     return dir_
 
 
+# このファイルの存在するパス（cx-freezeのビルド前、ビルド後のパスの差異を吸収する）
 __current__ = check_current()
+
+# ChromeとChromeDriverのパス
+__chrome_driver_path__ = None
+__chrome_exec_path__ = None
+if os.name == "posix":  # mac or linux
+    __chrome_driver_path__ = f"{__current__}/lib/chromedriver_binary/chromedriver"
+    __chrome_exec_path__ = f"{__current__}/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+else:  # windows
+    __chrome_driver_path__ = f"{__current__}/chromedriver_binary/chromedriver.exe"
+    __chrome_exec_path__ = f"{__current__}/Google/Chrome/Application/chrome.exe"
 
 
 def get_ssurl():
@@ -77,11 +91,12 @@ def get_ssurl():
         また、ss_url.txtが2行以上ある場合、そのままだと行末に改行コードが含まれる.
         そのため正規表現でURLを抜き出している.
     """
-    with open(f"{__current__}/ss_url.txt") as f:
+    with open(f"{__current__}/ss_url.txt", encoding="utf-8") as f:
         first_line = f.readline()
-        return re.match(".+?exec", first_line).group(0)
+        return re.search("http.+?exec", first_line).group(0)
 
 
+# サーバとして機能させているGASのURL
 __ssurl__ = get_ssurl()
 
 
@@ -89,7 +104,7 @@ def get_keys_for_moz_api():
     """
         Moz APIのためのキーをタプルで取得する
     """
-    with open(f"{__current__}/moz_api.txt") as f:
+    with open(f"{__current__}/moz_api.txt", encoding="utf-8") as f:
         id = f.readline().rstrip('\r\n')
         key = f.readline().rstrip('\r\n')
         return id, key
@@ -103,13 +118,19 @@ def open_png(img_read):
     pil_img = Image.open(img_bin) #PILで読み込む
     pil_img.show()
 
+
 def plusStrToNum(*str):
+    """
+        引数の文字列すべてを小数に変換し、加算した結果を返却する.
+        なおfloatに変換できない文字列は数値「0」とみなす
+    """
     target = []
     for s in str:
         try:
             target.append(float(s))
         except:
             target.append(0)
+            
     result = 0
     for t in target:
         result += t
@@ -118,6 +139,7 @@ def plusStrToNum(*str):
 
 class pycolor:
     """
+        ターミナル用出力用.
         色つき文字列の取得: pycolor.paint(str, pycolor.RED), 
         色つきプリント；pycolor.print_red(str)
     """
@@ -161,6 +183,10 @@ class pycolor:
 
 
 def log(str, *, color=""):
+    """
+        ログ出力をターミナルに行う.
+        キーワード引数colorの値により、出力時の文字色を変える
+    """
     output = f"{datetime.now()} : {str}"
     if color == "blue":
         pycolor.print_blue(output)
@@ -172,14 +198,6 @@ def log(str, *, color=""):
         pycolor.print_yellow(output)
     else:
         print(output)
-
-
-def plus(*strs):
-    toNum = lambda str: re.fullmatch("[0-9]+", str) and int(str) or 0
-    result = 0
-    for s in strs:
-        result += toNum(s)
-    return result
 
 
 def read():
@@ -199,7 +217,6 @@ def read():
                 "row6":"xxxxx.com"
         }
     """
-    # テスト用URL
     log("スプレッドシートから情報を取得します")
     url_body = __ssurl__
     url_param = "?mode=0"
@@ -209,9 +226,11 @@ def read():
     }
     log(f"通信先URL: {url}")
     res = requests.get(url, headers=headers, verify=True)
+
     if res.status_code is not 200:
         log("通信失敗")
         return None
+
     log("通信成功")
     log(f"取得情報：{res.text}")
     dictionary = json.loads(res.text)
@@ -234,18 +253,21 @@ def get_target_list(res: dict) -> list:
 
 def write(row, domain, ahs_list, moz_list, maj_list, way_list):
     """
+        Ahrefs, Moz, Majestic, Waybackで調査したドメインの情報をスプレッドシートに書き込むようGASサーバに命令する
+        なお、書き込みを行うスプレッドシートの構成は以下の通り
                 	Ahrefs					                  Moz			         	Majestic				                                                   	Wayback		
-        DomainName	UR	DR	Governmental	教育	目視確認用	PA	DA	MozRank	目視確認用	TF(10以上ぐらい）	CF(被リンクの量)	4total(60以上)	6total(90以上)	目視確認用	運用開始	空白年	目視確認用
+        DomainName	UR	DR	Governmental	教育	目視確認用	PA	DA	MozRank	目視確認用	TF	CF(被リンクの量)	4total	6total	目視確認用_Majestic_URL	 運用開始年月	空白年	目視確認用_wayback_URL
         
         ---- 補足 ----
-        4total＝UR+DR＋TF＋CF
-        6total=4total+PA+DA
-        ここでいうURやPAはAhrefsやMOZの値であるため、このクラスは返却せずあとで計算してSSに渡す
+        4total = UR + DR + TF + CF
+        6total = 4total + PA + DA
     """
     url_body = __ssurl__
+
     # 4total, 6totalの算出
     total4 = plusStrToNum(ahs_list[0], ahs_list[1], maj_list[0], maj_list[1])
     total6 = total4 + plusStrToNum(moz_list[0], moz_list[1])
+
     url_param = f"?mode=1&row={row}&val=__a::{domain}__,__b::{ahs_list[0]}__,__c::{ahs_list[1]}__,__d::{ahs_list[2]}__,__e::{ahs_list[3]}__,__f::{ahs_list[4]}__,__g::{moz_list[0]}__,__h::{moz_list[1]}__,__i::{moz_list[2]}__,__j::{moz_list[3]}__,__k::{maj_list[0]}__l::{maj_list[1]}__,__m::{total4}__,__n::{total6}__,__o::{maj_list[2]}__,__p::{way_list[0]}__,__q::{way_list[1]}__,__r::{way_list[2]}__"
     url = url_body + url_param
     log(f"{domain}調査結果_ss連携URL：{url}")
@@ -262,13 +284,14 @@ class AhrefsScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google Chrome.app/Contents/MacOS/Google Chrome"
+        self._options.binary_location = __chrome_exec_path__
         headless and self._options.add_argument("--headless")
         self._options.add_argument('--user-agent=Mozilla/5.0 (Linux; U; Android 4.1.2; ja-jp; SC-06D Build/JZO54K) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30')
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/lib/chromedriver_binary/chromedriver")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(0, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 10)
+
     def _waitAndGo(self, css, index, send=None):
         """
            対象が表示されるまで待機し、キーを送信する.
@@ -282,6 +305,7 @@ class AhrefsScraper:
         )[index]
         send and target.send_keys(send)
         return target
+
     def login(self):
         url = "https://ahrefs.com/user/login"
         self.driver.get(url)
@@ -290,6 +314,7 @@ class AhrefsScraper:
         self.driver.find_element_by_css_selector("[name=password]").send_keys(self.password)
         self.driver.find_element_by_css_selector("[value='Sign in']").send_keys(Keys.ENTER)
         time.sleep(1)
+
     def scrape(self, domain):
         before = time.time()
         log(f"ahrefsスクレイピング開始（{domain}）", color="blue")
@@ -301,6 +326,7 @@ class AhrefsScraper:
             "#ReferringDomainsStatsContainer tr+tr+tr+tr a", 
             0)
         time.sleep(0.5)
+
         ur = None
         try:
             ur = self.driver.find_element_by_css_selector("#UrlRatingContainer span").text
@@ -321,6 +347,7 @@ class AhrefsScraper:
             edu = self.driver.find_element_by_css_selector("#ReferringDomainsStatsContainer tr+tr+tr+tr a").text
         except:
             edu = "-"
+
         link_on_sheet = urllib.parse.quote(f'=HYPERLINK("{self.driver.current_url}", "Ahrefs")')
         after = time.time()
         log(f"ahrefsスクレイピング終了（{domain}）", color="blue")
@@ -328,6 +355,7 @@ class AhrefsScraper:
         log("---- 取得結果 ----", color="blue")
         log(f"UR: {ur}, DR: {dr}, 教育: {gov}", color="blue")
         return [ur, dr, gov, edu, link_on_sheet]
+
     def close(self):
         self.driver.get("https://ahrefs.com/user/logout")
         self.driver.close()
@@ -349,16 +377,17 @@ class MozScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google Chrome.app/Contents/MacOS/Google Chrome"
+        self._options.binary_location = __chrome_exec_path__
         self.__isHeadless__ = headless
         # mozbarの導入(非ヘッドレスモード時のみ)
         headless or self._options.add_extension(f"{__current__}/mozbar.crx")
         # ヘッドレスモード
         headless and self._options.add_argument("--headless")
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/lib/chromedriver_binary/chromedriver")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(200, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 10)
+
     def _is_ok(self, url):
         """
             urlの通信結果を判定する
@@ -380,6 +409,7 @@ class MozScraper:
             else:
                 log("通信成功", color="yellow")
                 return True
+
     def _waitAndGo(self, css, index, send=None):
         """
            対象が表示されるまで待機し、キーを送信する.
@@ -393,6 +423,7 @@ class MozScraper:
         )[index]
         send and target.send_keys(send)
         return target
+
     def login(self):
         if self.api_id and self.api_key:
             """
@@ -417,6 +448,7 @@ class MozScraper:
         r = re.search("link-explorer", self.driver.current_url)
         if not (r and r.group(0)):
             self.login()
+
     def scrape(self, domain, *, non_mozbar=False):
         before = time.time()
         log(f"mozスクレイピング開始（{domain}）", color="yellow")
@@ -436,6 +468,7 @@ class MozScraper:
             mozMetrics = client.urlMetrics(domain)
             PA = mozMetrics.get("upa")
             DA = mozMetrics.get("pda")
+
             if PA:
                 PA = f"{PA}"
             else:
@@ -444,17 +477,18 @@ class MozScraper:
                 DA = f"{DA}"
             else:
                 DA = "-"
+
             after = time.time()
             log(f"mozスクレイピング終了（{domain}）", color="yellow")
             log(f"所要時間：{'{:.3}'.format(after-before)}秒", color="yellow")
             log("---- 取得結果 ----", color="yellow")
             log(f"DA: {DA}, PA: {PA}", color="yellow")
             return [PA, DA, mozRank, link_on_sheet]
+
         elif not non_mozbar and not self.__isHeadless__ and self._is_ok(url):
             log("moz_api.txtを読み取れませんでした。MozBarで調査を行います.", color="yellow")
             self.driver.execute_script("window.open()") #make new tab
             self.driver.switch_to.window(self.driver.window_handles[1]) #switch new tab
-            self.driver.get(url)
             self.driver.get(url)
             iframe = self._waitAndGo("#mozbar-wGA7MhRhQ3WS", 0)
             self.driver.switch_to_frame(iframe)
@@ -469,11 +503,14 @@ class MozScraper:
             self.driver.close()
             self.driver.switch_to.window(self.driver.window_handles[0]) #switch original tab
             return [PA, DA, mozRank, link_on_sheet]
+
         else:
             log("linkExplorerで調査を行います.", color="yellow")
             search_input = self._waitAndGo(".search-input", 0)
+
             for i in range(len(search_input.get_attribute("value"))):
                 search_input.send_keys(Keys.BACK_SPACE)
+
             search_input.send_keys(domain)
             search_input.send_keys(Keys.ENTER)
             DA = self._waitAndGo(".animation-value", 0).text
@@ -484,7 +521,6 @@ class MozScraper:
             log("---- 取得結果 ----", color="yellow")
             log(f"DA: {DA}, PA: {PA}", color="yellow")
             return [PA, DA, mozRank, link_on_sheet]
-
 
     def close(self):
         if self.api_id and self.api_key:
@@ -507,12 +543,13 @@ class MajesticScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google Chrome.app/Contents/MacOS/Google Chrome"
+        self._options.binary_location = __chrome_exec_path__
         headless and self._options.add_argument("--headless")
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/lib/chromedriver_binary/chromedriver")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(400, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 5)
+
     def _waitAndGo(self, css, index, send=None):
         """
            対象が表示されるまで待機し、キーを送信する.
@@ -526,6 +563,7 @@ class MajesticScraper:
         )[index]
         send and target.send_keys(send)
         return target
+
     def login(self):
         """
             ログインを行い、以下のURLに遷移する.
@@ -533,32 +571,44 @@ class MajesticScraper:
         """
         url = "https://ja.majestic.com/account/login"
         self.driver.get(url)
-        ActionChains(self.driver).move_to_element(
-            self.driver.find_element_by_css_selector("[alt=captcha]")
-        )
-        png = self.driver.find_element_by_css_selector('[alt="captcha"]').screenshot_as_png
-        open_png(png)
-        code = input("表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
+        code = ""
+        if os.name == "posix":  # Mac or Linuxの場合
+            ActionChains(self.driver).move_to_element(
+                self.driver.find_element_by_css_selector("[alt=captcha]")
+            )
+            png = self.driver.find_element_by_css_selector('[alt="captcha"]').screenshot_as_png
+            open_png(png)
+            code = input("表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
+        else:  # Windowsの場合
+            code = input("Majesticのログイン画面に表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
         self.driver.find_element_by_css_selector("[name=EmailAddress]").send_keys(self.id)
         self.driver.find_element_by_css_selector("[name=Password]").send_keys(self.password)
         self.driver.find_element_by_css_selector("[name=Captcha]").send_keys(code)
         self.driver.find_element_by_css_selector("[type=submit]").send_keys(Keys.ENTER)
         time.sleep(1)
+
         if self.driver.current_url == "https://ja.majestic.com/account/login":
             self.driver.find_element_by_css_selector('[name="Password"]').send_keys(self.password)
             self.driver.find_element_by_css_selector('[name="Password"]').send_keys(Keys.ENTER)
+
     def scrape(self, domain):
         before = time.time()
         log(f"majesticスクレイピング開始（{domain}）", color="green")
         search = self._waitAndGo("#search_text", 0)
+        
         for i in range(len(search.get_attribute("value"))):
             search.send_keys(Keys.BACK_SPACE)
+
         search.send_keys(domain)
         search.send_keys(Keys.ENTER)
         TF = None
         CF = None
         self._waitAndGo(".citation_flow_innertext", 0)
         citation_flow_list = self.driver.find_elements_by_css_selector(".citation_flow_innertext")
+
         if len(citation_flow_list) > 1:
             """
                 TFがゼロのとき.
@@ -566,6 +616,7 @@ class MajesticScraper:
             """
             TF = citation_flow_list[0].text
             CF = citation_flow_list[1].text
+
         else:
             """
                 TFが1以上のとき.
@@ -573,6 +624,7 @@ class MajesticScraper:
             """
             TF = self._waitAndGo(".trust_flow_innertext", 0).text
             CF = citation_flow_list[0].text
+
         link_on_sheet = urllib.parse.quote(f'=HYPERLINK("{self.driver.current_url}", "Majestic")')
         after = time.time()
         log(f"majesticスクレイピング終了（{domain}）", color="green")
@@ -580,6 +632,7 @@ class MajesticScraper:
         log("---- 取得結果 ----", color="green")
         log(f"TF: {TF}, CF: {CF}", color="green")
         return [TF, CF, link_on_sheet]
+
     def close(self):
         self.driver.get("https://ja.majestic.com/?logout=1")
         self.driver.close()
@@ -588,7 +641,8 @@ class MajesticScraper:
 
 def scrape_wayback(domain):
     """
-        調査対象：運用開始, 空白年, 目視確認用
+        Wayback Machineでの調査を行う.
+        調査対象：運用開始, 空白年, 目視確認用のwayback_URL
     """
     before = time.time()
     log(f"waybackスクレイピング開始（{domain}）", color="cyan")
@@ -629,7 +683,7 @@ def all_login(ahs_scraper, moz_scraper, maj_scraper):
 
 def all_login_for_multi(ahs_scraper, moz_scraper, maj_scraper):
     """
-        各スクレイパのログインを行う
+        各スクレイパのログインを行う（Moz用スクレイパを除く ※MozAPIによる調査用）
     """
     log("全サービスログイン処理開始")
     maj_scraper.login()
@@ -666,6 +720,10 @@ def scrape_by_domain(row, domain, ahs_scraper, moz_scraper, maj_scraper):
 
 
 def app(headless=False):
+    """
+        メイン処理を実行する.
+        （スプレッドシートから調査対象ドメインを読み取り、各ドメインについての調査を行う）
+    """
     ss_dict = read()
     target_list = get_target_list(ss_dict)
     if len(target_list) is 0:
@@ -707,64 +765,10 @@ def app(headless=False):
     input("ツールの実行が完了しました")
 
 
-def app2():    
-    ss_dict = read()
-    target_list = get_target_list(ss_dict)
-    if len(target_list) is 0:
-        input("調査対象が存在しません.ツールの実行を終了します(click Enter.) >>> ")
-        return
-
-    ahsS1 = AhrefsScraper(ss_dict.get("ah_id"), ss_dict.get("ah_pass"))
-    mozS1 = MozScraper(ss_dict.get("mz_id"), ss_dict.get("mz_pass"))
-    majS1 = MajesticScraper(ss_dict.get("mj_id"), ss_dict.get("mj_pass"))
-    ahsS2 = AhrefsScraper(ss_dict.get("ah_id"), ss_dict.get("ah_pass"), posi_y=100)
-    mozS2 = MozScraper(ss_dict.get("mz_id"), ss_dict.get("mz_pass"), posi_y=100)
-    majS2 = MajesticScraper(ss_dict.get("mj_id"), ss_dict.get("mj_pass"), posi_y=100)
-
-    all_login_for_multi(ahsS1, mozS1, majS1)
-    all_login_for_multi(ahsS2, mozS2, majS2)
-
-    list1 = [target_list[i] for i in range(len(target_list)) if i%2==0]
-    list2 = [target_list[i] for i in range(len(target_list)) if i%2==1]
-    
-    def check_domain(list, ahsS, mozS, majS):
-        for tuple in list:
-            row, domain = tuple
-            (
-                row, 
-                domain, 
-                ahs_list, 
-                moz_list, 
-                maj_list, 
-                way_list
-            ) = scrape_by_domain(row, domain, ahsS, mozS, majS)
-            threading.Thread(target=lambda:write(
-                row, domain, ahs_list, moz_list, maj_list, way_list
-            )).start()
-
-    t1 = threading.Thread(target=lambda:check_domain(list1, ahsS1, mozS1, majS1))
-    t2 = threading.Thread(target=lambda:check_domain(list2, ahsS2, mozS2, majS2))
-    t1.start()
-    time.sleep(1)
-    t2.start()
-    t1.join()
-    t2.join()
-
-    ahsS1.close()
-    mozS1.close()
-    majS1.close()
-    ahsS2.close()
-    mozS2.close()
-    majS2.close()
-
-    log("ツールの実行が完了しました")
-
-
 if __name__ == "__main__":
-    app()
+    try:
+        app()
+    except Exception as e:
+        print(e)
+        input("error occured.")
 
-    # # headlessモード
-    # app(headless=True)
-
-    # # 二重実行版（かえって遅くなったため不使用）
-    # app2()
