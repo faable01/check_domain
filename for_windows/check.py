@@ -72,6 +72,17 @@ def check_current():
 # このファイルの存在するパス（cx-freezeのビルド前、ビルド後のパスの差異を吸収する）
 __current__ = check_current()
 
+# ChromeとChromeDriverのパス
+__chrome_driver_path__ = None
+__chrome_exec_path__ = None
+if os.name == "posix":  # mac or linux
+    __chrome_driver_path__ = f"{__current__}/lib/chromedriver_binary/chromedriver"
+    __chrome_exec_path__ = f"{__current__}/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+else:  # windows
+    __chrome_driver_path__ = f"{__current__}/chromedriver_binary/chromedriver.exe"
+    __chrome_exec_path__ = f"{__current__}/Google/Chrome/Application/chrome.exe"
+
 
 def get_ssurl():
     """
@@ -273,10 +284,10 @@ class AhrefsScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google/Chrome/Application/chrome.exe"
+        self._options.binary_location = __chrome_exec_path__
         headless and self._options.add_argument("--headless")
         self._options.add_argument('--user-agent=Mozilla/5.0 (Linux; U; Android 4.1.2; ja-jp; SC-06D Build/JZO54K) AppleWebKit/534.30 (KHTML, like Gecko) Version/4.0 Mobile Safari/534.30')
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/chromedriver_binary/chromedriver.exe")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(0, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 10)
@@ -366,13 +377,13 @@ class MozScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google/Chrome/Application/chrome.exe"
+        self._options.binary_location = __chrome_exec_path__
         self.__isHeadless__ = headless
         # mozbarの導入(非ヘッドレスモード時のみ)
         headless or self._options.add_extension(f"{__current__}/mozbar.crx")
         # ヘッドレスモード
         headless and self._options.add_argument("--headless")
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/chromedriver_binary/chromedriver.exe")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(200, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 10)
@@ -532,9 +543,9 @@ class MajesticScraper:
         self.id = id
         self.password = password
         self._options = Options()
-        self._options.binary_location = f"{__current__}/Google/Chrome/Application/chrome.exe"
+        self._options.binary_location = __chrome_exec_path__
         headless and self._options.add_argument("--headless")
-        self.driver = webdriver.Chrome(options=self._options, executable_path=f"{__current__}/chromedriver_binary/chromedriver.exe")
+        self.driver = webdriver.Chrome(options=self._options, executable_path=__chrome_driver_path__)
         self.driver.set_window_position(400, 0+posi_y)
         self.driver.set_window_size(200, 400)
         self.wait = WebDriverWait(self.driver, 5)
@@ -560,7 +571,19 @@ class MajesticScraper:
         """
         url = "https://ja.majestic.com/account/login"
         self.driver.get(url)
-        code = input("Mahesticのログイン画面に表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
+        code = ""
+        if os.name == "posix":  # Mac or Linuxの場合
+            ActionChains(self.driver).move_to_element(
+                self.driver.find_element_by_css_selector("[alt=captcha]")
+            )
+            png = self.driver.find_element_by_css_selector('[alt="captcha"]').screenshot_as_png
+            open_png(png)
+            code = input("表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
+        else:  # Windowsの場合
+            code = input("Majesticのログイン画面に表示された認証コードをターミナルに入力してください（入力後、画像ウィンドウは閉じて大丈夫です.） >>> ")
+
         self.driver.find_element_by_css_selector("[name=EmailAddress]").send_keys(self.id)
         self.driver.find_element_by_css_selector("[name=Password]").send_keys(self.password)
         self.driver.find_element_by_css_selector("[name=Captcha]").send_keys(code)
